@@ -1,3 +1,4 @@
+import builtins
 from PIL import Image, ExifTags
 from pathlib import Path
 import itertools
@@ -11,7 +12,9 @@ from model.model import NIMA
 from collections.abc import Iterable
 import argparse
 import pandas as pd
+import warnings
 
+builtin_print = builtins.print
 
 class TypedNamespace(argparse.Namespace):
     image_path: str
@@ -36,6 +39,8 @@ def get_parser():
     parser.add_argument("--time_threshold", type=int, default=10,
                         help='In order to group two photos, the number of minutes between them must be less than this '
                              'number')
+    parser.add_argument("--print_results", action='store_true', help="Whether to print the scores to stdout")
+    parser.add_argument("--silent", action='store_true', help="Whether to suppress all output except for the scores")
     return parser
 
 
@@ -197,6 +202,12 @@ def extract_top_scored(group: Iterable[Path], scores: dict[Path, float]) -> Path
 def main():
     parser = get_parser()
     args = parser.parse_args(namespace=TypedNamespace())
+    
+    if args.silent:
+        # disable printing, use builtin_print to print essential information
+        builtins.print = lambda *args, **kwargs: None
+        # disable warnings
+        warnings.filterwarnings("ignore")
     print(args)
 
     image_dir = Path(args.image_path)
@@ -206,13 +217,15 @@ def main():
 
     model = get_evaluation_model(weight_path=args.model_path)
     scores = score_paths(model, image_paths)
-    prediction_path = Path(args.prediction_path)
+    if args.print_results:
+            builtin_print(",".join([f"{path.name}={score}" for path, score in scores.items()]))
+    else:
+        prediction_path = Path(args.prediction_path)
 
-    if not prediction_path.exists():
-        prediction_path.mkdir(parents=True)
-    pd.DataFrame(scores.items(), columns=["path", "score"]).to_csv(prediction_path / "scores.csv", index=False)
-    print(f"Image scores saved to {prediction_path / 'scores.csv'}")
-
+        if not prediction_path.exists():
+            prediction_path.mkdir(parents=True)
+        pd.DataFrame(scores.items(), columns=["path", "score"]).to_csv(prediction_path / "scores.csv", index=False)
+        print(f"Image scores saved to {prediction_path / 'scores.csv'}")
     if not args.score_only:
         path_date_features = extract_features(image_paths)
         print("Image features extracted, now grouping images")
