@@ -1,4 +1,5 @@
 import builtins
+import io
 from PIL import Image, ExifTags
 from pathlib import Path
 import itertools
@@ -13,6 +14,7 @@ from collections.abc import Iterable
 import argparse
 import pandas as pd
 import warnings
+import rawpy
 
 builtin_print = builtins.print
 
@@ -43,6 +45,27 @@ def get_parser():
     parser.add_argument("--silent", action='store_true', help="Whether to suppress all output except for the scores")
     return parser
 
+def open_image(image_path: Path) -> Image:
+    """
+    Opens an image from a path, and converts it to RGB
+
+    Args:
+        image_path: The path to the image to open
+
+    Returns: The opened image
+
+    """
+    try:
+        with rawpy.imread(str(image_path)) as raw:
+            thumb = raw.extract_thumb()
+            if thumb.format == rawpy.ThumbFormat.BITMAP:
+                img = Image.fromarray(thumb)
+            elif thumb.format == rawpy.ThumbFormat.JPEG:
+                img = Image.open(io.BytesIO(thumb.data))
+            img.convert('RGB')
+            return img                
+    except rawpy.LibRawError as _:
+        return Image.open(image_path).convert('RGB')
 
 def score_paths(model: NIMA, image_paths: Iterable[Path]) -> dict[Path, float]:
     """
@@ -68,8 +91,7 @@ def score_paths(model: NIMA, image_paths: Iterable[Path]) -> dict[Path, float]:
     scores = []
     for i, img in enumerate(image_paths):
         mean, std = 0.0, 0.0
-        im = Image.open(img)
-        im = im.convert('RGB')
+        im = open_image(img)
         imt = test_transform(im)
         imt = imt.unsqueeze(dim=0)
         imt = imt.to(device)
