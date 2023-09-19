@@ -3,3 +3,4 @@ torchvision==0.15.*
 Pillow==9.*
 numpy==1.*
 pandas==2.*
+rawpy==0.18.1
